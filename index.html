@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RunPod LLM Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        #chatbox::-webkit-scrollbar { width: 8px; }
+        #chatbox::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+        #chatbox::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
+        #chatbox::-webkit-scrollbar-thumb:hover { background: #555; }
+        .message { padding: 10px 15px; border-radius: 15px; margin-bottom: 10px; max-width: 80%; word-wrap: break-word; line-height: 1.5; }
+        .user-message { background-color: #3b82f6; color: white; align-self: flex-end; border-bottom-right-radius: 0px; }
+        .assistant-message { background-color: #e5e7eb; color: #1f2937; align-self: flex-start; border-bottom-left-radius: 0px; }
+        .error-message { background-color: #ef4444; color: white; padding: 10px; border-radius: 8px; text-align: center; margin: 10px; }
+        .loading-indicator { display: flex; align-items: center; justify-content: center; padding: 10px; color: #6b7280; }
+        .loading-spinner { border: 4px solid #f3f4f6; border-top: 4px solid #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; margin-right: 8px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl bg-white shadow-xl rounded-lg flex flex-col h-[85vh]">
+        <header class="bg-gray-800 text-white p-4 rounded-t-lg">
+            <h1 class="text-xl font-semibold text-center">Secure RunPod Chat</h1>
+        </header>
+
+        <div id="chatbox" class="flex-grow p-6 space-y-4 overflow-y-auto flex flex-col">
+            <div class="message assistant-message">Hello! How can I help you today?</div>
+        </div>
+
+        <div id="loading" class="loading-indicator hidden">
+            <div class="loading-spinner"></div>
+            <span>Thinking...</span>
+        </div>
+        <div id="errorDisplay" class="error-message hidden"></div>
+
+        <footer class="p-4 border-t border-gray-200 rounded-b-lg bg-gray-50">
+            <div class="flex items-center space-x-3">
+                <input type="text" id="userInput" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="Type your message...">
+                <button id="sendButton" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Send
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // ───── CONFIGURATION ─────
+        // !!! IMPORTANT: Replace this with your *actual* Cloudflare Worker URL after you deploy it !!!
+        const WORKER_URL = "YOUR_CLOUDFLARE_WORKER_URL";
+        const MODEL_NAME = "llama2:13b"; // Ensure this matches your RunPod model
+        // ─────────────────────────
+
+        const chatbox = document.getElementById('chatbox');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        const loadingIndicator = document.getElementById('loading');
+        const errorDisplay = document.getElementById('errorDisplay');
+
+        let messageHistory = [{ role: "assistant", content: "Hello! How can I help you today?" }];
+
+        function checkConfig() {
+            if (WORKER_URL === "YOUR_CLOUDFLARE_WORKER_URL" || WORKER_URL === "") {
+                errorDisplay.textContent = "Configuration needed: Please update the WORKER_URL in index.html and redeploy.";
+                errorDisplay.classList.remove('hidden');
+                sendButton.disabled = true;
+                return false;
+            }
+            errorDisplay.classList.add('hidden');
+            sendButton.disabled = false;
+            return true;
+        }
+
+        function displayMessage(role, content) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', role === 'user' ? 'user-message' : 'assistant-message');
+            const tempDiv = document.createElement('div');
+            tempDiv.textContent = content;
+            messageElement.innerHTML = tempDiv.innerHTML.replace(/\n/g, '<br>');
+            chatbox.appendChild(messageElement);
+            chatbox.scrollTop = chatbox.scrollHeight;
+        }
+
+        async function handleSendMessage() {
+            if (!checkConfig()) return;
+            const userText = userInput.value.trim();
+            if (!userText) return;
+
+            displayMessage('user', userText);
+            messageHistory.push({ role: "user", content: userText });
+            userInput.value = '';
+            loadingIndicator.classList.remove('hidden');
+            errorDisplay.classList.add('hidden');
+            sendButton.disabled = true;
+
+            try {
+                const response = await fetch(WORKER_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model: MODEL_NAME,
+                        messages: messageHistory,
+                        stream: false
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || `API Error (${response.status}): ${response.statusText}`);
+                }
+
+                const replyContent = data?.message?.content || data?.response || "<Could not extract reply>";
+
+                displayMessage('assistant', replyContent);
+                messageHistory.push({ role: "assistant", content: replyContent });
+
+            } catch (error) {
+                console.error('Error sending message:', error);
+                errorDisplay.textContent = `Error: ${error.message}. Check console & Worker logs.`;
+                errorDisplay.classList.remove('hidden');
+                messageHistory.pop(); // Remove the user message that failed
+            } finally {
+                loadingIndicator.classList.add('hidden');
+                sendButton.disabled = false;
+                userInput.focus();
+            }
+        }
+
+        sendButton.addEventListener('click', handleSendMessage);
+        userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSendMessage(); });
+
+        checkConfig(); // Initial check on load
+    </script>
+</body>
+</html>
