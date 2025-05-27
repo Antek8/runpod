@@ -118,7 +118,7 @@
 
         // Function to check if the WORKER_URL has been set.
         function checkConfig() {
-            if (WORKER_URL === "https://runllm.pages.dev" || WORKER_URL === "") {
+            if (WORKER_URL === "YOUR_CLOUDFLARE_WORKER_URL" || WORKER_URL === "") {
                 errorDisplay.textContent = "Configuration needed: Please update the WORKER_URL in index.html with your Cloudflare Worker URL.";
                 errorDisplay.classList.remove('hidden');
                 sendButton.disabled = true;
