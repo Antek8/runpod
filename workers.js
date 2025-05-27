@@ -1,30 +1,43 @@
-// Cloudflare Worker for proxying to RunPod and handling CORS
+// Cloudflare Worker for proxying to RunPod and handling dynamic CORS
 
 // Define the RunPod host template and chat endpoint.
 const HOST_TEMPLATE = "https://{podId}-11434.proxy.runpod.net";
 const CHAT_ENDPOINT = "/api/chat";
 
-// Replace '*' with your actual frontend origin(s) in production.
-const ALLOWED_ORIGINS = ['https://runllm.pages.dev', '*'];
+// Define your primary production origin and the suffix for preview domains.
+const PRODUCTION_ORIGIN = 'https://runllm.pages.dev';
+const PREVIEW_SUFFIX = '.runllm.pages.dev';
 
 export default {
   async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin");
     console.log(`WORKER_LOG: Request received. Method: ${request.method}, Origin: ${origin}`);
 
+    // Determine CORS headers based on the dynamic origin
+    const corsHeaders = createCorsHeaders(origin);
+
+    // If the origin is not allowed, block the request early (except OPTIONS)
+    if (!corsHeaders["Access-Control-Allow-Origin"] && request.method !== 'OPTIONS' && origin) {
+        console.log(`WORKER_LOG: Denying request from disallowed origin: ${origin}`);
+        return new Response(JSON.stringify({ error: "Forbidden - CORS Origin Not Allowed" }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+
     if (request.method === 'OPTIONS') {
-      return handleOptions(request, origin);
+      return handleOptions(request, corsHeaders);
     }
 
     if (request.method === 'POST') {
-      return handlePost(request, env, origin);
+      return handlePost(request, env, corsHeaders);
     }
 
-    // Method not allowed
+    // Method not allowed - return with potential CORS headers
     return new Response(JSON.stringify({ error: `Method ${request.method} Not Allowed` }), {
       status: 405,
       headers: {
-        ...createCorsHeaders(origin),
+        ...corsHeaders,
         'Content-Type': 'application/json',
         'Allow': 'POST, OPTIONS'
       }
@@ -32,44 +45,78 @@ export default {
   }
 };
 
+/**
+ * Creates CORS headers, dynamically setting ACAO based on origin.
+ * @param {string | null} origin The 'Origin' header from the request.
+ * @returns {Object} A dictionary of CORS headers.
+ */
 function createCorsHeaders(origin) {
   const headers = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
+    // Be specific if possible, or use '*' if many headers are needed.
+    // Ensure this includes 'Content-Type' and any others (like 'Authorization').
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "86400"
   };
 
-  if (ALLOWED_ORIGINS.includes('*') || (origin && ALLOWED_ORIGINS.includes(origin))) {
-    headers["Access-Control-Allow-Origin"] = origin || "*";
-  } else if (ALLOWED_ORIGINS.length > 0) {
-    headers["Access-Control-Allow-Origin"] = ALLOWED_ORIGINS[0]; // fallback
+  // Check if the origin is either the production one or a *.runllm.pages.dev
+  if (origin) {
+      if (origin === PRODUCTION_ORIGIN || (origin.startsWith('https://') && origin.endsWith(PREVIEW_SUFFIX))) {
+          // It's an allowed origin! Reflect it back.
+          headers["Access-Control-Allow-Origin"] = origin;
+      }
   }
+  // If the origin doesn't match, we simply don't add the ACAO header.
+  // The browser will then block the request (unless it's OPTIONS).
 
   return headers;
 }
 
-function handleOptions(request, origin) {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      ...createCorsHeaders(origin),
-      "Access-Control-Allow-Headers": request.headers.get("Access-Control-Request-Headers") || "Content-Type"
+/**
+ * Handles OPTIONS preflight requests.
+ * @param {Request} request The incoming request.
+ * @param {Object} corsHeaders The pre-calculated CORS headers.
+ * @returns {Response} A response for the preflight request.
+ */
+function handleOptions(request, corsHeaders) {
+    // If the origin wasn't allowed (no ACAO header), return an error.
+    if (!corsHeaders["Access-Control-Allow-Origin"]) {
+        return new Response('Not Allowed', { status: 403 });
     }
-  });
+
+    // Respond to valid preflight requests.
+    // It's good practice to reflect back the requested headers if possible/safe.
+    return new Response(null, {
+        status: 204, // 204 No Content is standard for preflights.
+        headers: {
+            ...corsHeaders,
+            // Allow the specific headers the client asked for in the preflight.
+            "Access-Control-Allow-Headers": request.headers.get("Access-Control-Request-Headers") || corsHeaders["Access-Control-Allow-Headers"]
+        }
+    });
 }
 
-async function handlePost(request, env, origin) {
-  const corsHeaders = {
-    ...createCorsHeaders(origin),
+/**
+ * Handles POST requests, proxying to RunPod.
+ * @param {Request} request The incoming request.
+ * @param {Object} env Environment variables (secrets).
+ * @param {Object} baseCorsHeaders The base CORS headers.
+ * @returns {Promise<Response>} The proxied response.
+ */
+async function handlePost(request, env, baseCorsHeaders) {
+  // Ensure the final response has the necessary ACAO header
+  const responseHeaders = {
+    ...baseCorsHeaders,
     "Content-Type": "application/json"
   };
 
   const podId = env.RUNPOD_POD_ID;
   const apiKey = env.RUNPOD_API_KEY;
+
   if (!podId || !apiKey) {
     return new Response(JSON.stringify({ error: "RunPod credentials not configured." }), {
       status: 500,
-      headers: corsHeaders
+      headers: responseHeaders
     });
   }
 
@@ -95,23 +142,24 @@ async function handlePost(request, env, origin) {
         details: responseText
       }), {
         status: runpodResponse.status || 502,
-        headers: corsHeaders
+        headers: responseHeaders
       });
     }
 
+    // Validate and return JSON
     try {
       JSON.parse(responseText); // Validate JSON
       return new Response(responseText, {
         status: 200,
-        headers: corsHeaders
+        headers: responseHeaders
       });
-    } catch {
+    } catch (jsonError) {
       return new Response(JSON.stringify({
         error: "Malformed JSON from RunPod",
         details: responseText
       }), {
         status: 502,
-        headers: corsHeaders
+        headers: responseHeaders
       });
     }
 
@@ -122,7 +170,7 @@ async function handlePost(request, env, origin) {
       details: error.message
     }), {
       status: isJsonError ? 400 : 500,
-      headers: corsHeaders
+      headers: responseHeaders
     });
   }
 }
