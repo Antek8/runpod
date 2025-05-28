@@ -5,7 +5,7 @@ const HOST_TEMPLATE = "https://{podId}-11434.proxy.runpod.net";
 const CHAT_ENDPOINT = "/api/chat";
 
 // Define your primary production origin and the suffix for preview domains.
-const PRODUCTION_ORIGIN = 'https://runllm.pages.dev';
+const PRODUCTION_ORIGIN = 'https://4palollo.workers.dev';
 const PREVIEW_SUFFIX = '.runllm.pages.dev';
 
 export default {
