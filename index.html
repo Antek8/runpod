@@ -3,123 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RunPod LLM Chat</title>
+    <title>Secure LLM Chat</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         body { 
             font-family: 'Inter', sans-serif; 
-            background-color: #f3f4f6; /* Tailwind gray-100 */
         }
+        /* Custom scrollbar for webkit browsers */
         #chatbox::-webkit-scrollbar { width: 8px; }
-        #chatbox::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
-        #chatbox::-webkit-scrollbar-thumb { background: #888; border-radius: 10px; }
-        #chatbox::-webkit-scrollbar-thumb:hover { background: #555; }
-        .message { 
-            padding: 10px 15px; 
-            border-radius: 15px; 
-            margin-bottom: 10px; 
-            max-width: 80%; 
-            word-wrap: break-word; 
-            line-height: 1.5; 
+        #chatbox::-webkit-scrollbar-track { background: #2d3748; /* slate-800 */ border-radius: 10px; }
+        #chatbox::-webkit-scrollbar-thumb { background: #4a5568; /* slate-600 */ border-radius: 10px; }
+        #chatbox::-webkit-scrollbar-thumb:hover { background: #718096; /* slate-500 */ }
+
+        /* Ensure full height for chat container on mobile, especially when keyboard appears */
+        .chat-container-full-height {
+            height: 100vh; /* Fallback for browsers that don't support dvh */
+            height: 100dvh; /* Dynamic viewport height */
         }
-        .user-message { 
-            background-color: #3b82f6; /* Tailwind blue-500 */
-            color: white; 
-            align-self: flex-end; 
-            border-bottom-right-radius: 0px; 
-        }
-        .assistant-message { 
-            background-color: #e5e7eb; /* Tailwind gray-200 */
-            color: #1f2937; /* Tailwind gray-800 */
-            align-self: flex-start; 
-            border-bottom-left-radius: 0px; 
-        }
-        .error-message { 
-            background-color: #ef4444; /* Tailwind red-500 */
-            color: white; 
-            padding: 10px; 
-            border-radius: 8px; 
-            text-align: center; 
-            margin: 10px; 
-        }
-        .loading-indicator { 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            padding: 10px; 
-            color: #6b7280; /* Tailwind gray-500 */
-        }
-        .loading-spinner { 
-            border: 4px solid #f3f4f6; 
-            border-top: 4px solid #3b82f6; 
-            border-radius: 50%; 
-            width: 24px; 
-            height: 24px; 
-            animation: spin 1s linear infinite; 
-            margin-right: 8px; 
-        }
-        @keyframes spin { 
-            0% { transform: rotate(0deg); } 
-            100% { transform: rotate(360deg); } 
+        @media (min-width: 640px) { /* sm breakpoint */
+            .chat-container-full-height {
+                height: 90vh;
+                max-height: 750px; /* Max height on larger screens */
+            }
         }
     </style>
 </head>
-<body class="flex flex-col items-center justify-center min-h-screen p-4">
+<body class="min-h-screen flex flex-col bg-gradient-to-br from-slate-900 to-slate-800 text-slate-100 items-center justify-center p-0 sm:p-4">
 
-    <div class="w-full max-w-2xl bg-white shadow-xl rounded-lg flex flex-col h-[85vh]">
-        <header class="bg-gray-800 text-white p-4 rounded-t-lg">
-            <h1 class="text-xl font-semibold text-center">Secure Chat</h1>
+    <div class="w-full sm:max-w-2xl bg-slate-800 shadow-2xl rounded-none sm:rounded-xl flex flex-col overflow-hidden border border-slate-700 chat-container-full-height">
+        
+        <header class="bg-slate-700/50 backdrop-blur-md text-white p-4 border-b border-slate-700 sticky top-0 z-10">
+            <h1 class="text-lg sm:text-xl font-semibold text-center">Secure Chat</h1>
         </header>
 
-        <div id="chatbox" class="flex-grow p-6 space-y-4 overflow-y-auto flex flex-col">
-            <div class="message assistant-message">Hello! How can I help you today?</div>
+        <div id="chatbox" class="flex-grow p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex flex-col">
+            <div class="message assistant-message self-start">
+                Hello! How can I help you today?
+            </div>
         </div>
 
-        <div id="loading" class="loading-indicator hidden">
-            <div class="loading-spinner"></div>
+        <div id="loading" class="loading-indicator hidden px-4 py-2 text-sm text-slate-400">
+            <div class="loading-spinner w-5 h-5 mr-2"></div>
             <span>Thinking...</span>
         </div>
 
-        <div id="errorDisplay" class="error-message hidden"></div>
+        <div id="errorDisplay" class="error-message hidden mx-4 mb-2 p-3 text-sm"></div>
 
-        <footer class="p-4 border-t border-gray-200 rounded-b-lg bg-gray-50">
-            <div class="flex items-center space-x-3">
-                <input type="text" id="userInput" class="flex-grow p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" placeholder="Type your message...">
-                <button id="sendButton" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed">
-                    Send to Niggalink
+        <footer class="p-3 sm:p-4 border-t border-slate-700 bg-slate-900/60 backdrop-blur-md sticky bottom-0 z-10">
+            <form id="chatForm" class="flex items-center space-x-2 sm:space-x-3">
+                <input type="text" id="userInput" class="flex-grow p-3 bg-slate-700 border border-slate-600 text-slate-100 placeholder-slate-400 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none text-sm sm:text-base" placeholder="How may I serve you Sir?">
+                <button type="submit" id="sendButton" class="bg-sky-600 hover:bg-sky-500 text-white font-medium p-3 rounded-lg transition duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-opacity-70 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center aspect-square">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5 sm:w-6 sm:h-6">
+                        <path d="M3.478 2.404a.75.75 0 0 0-.926.941l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.404Z" />
+                    </svg>
                 </button>
-            </div>
+            </form>
         </footer>
     </div>
 
     <script>
         // ───── CONFIGURATION ─────
-        // !!! IMPORTANT: Replace this placeholder with your *actual* Cloudflare Worker URL !!!
-        // Get this from your Cloudflare Worker's dashboard. It should look like:
-        // https://your-worker-name.your-account.workers.dev
-        const WORKER_URL = "https://runpod.4palollo.workers.dev"
-        
-        // Ensure this matches the model name available on your RunPod instance.
+        // This should be your actual Cloudflare Worker URL
+        const WORKER_URL = "https://runpod.4palollo.workers.dev"; 
         const MODEL_NAME = "llama2:13b"; 
         // ─────────────────────────
 
-        // Get references to the HTML elements
+        const chatForm = document.getElementById('chatForm');
         const chatbox = document.getElementById('chatbox');
         const userInput = document.getElementById('userInput');
         const sendButton = document.getElementById('sendButton');
         const loadingIndicator = document.getElementById('loading');
         const errorDisplay = document.getElementById('errorDisplay');
 
-        // Initialize the chat history (matches the first message)
         let messageHistory = [{ role: "assistant", content: "Hello! How can I help you today?" }];
 
-        // Function to check if the WORKER_URL has been set.
         function checkConfig() {
-            if (WORKER_URL === "YOUR_CLOUDFLARE_WORKER_URL" || WORKER_URL === "") {
-                errorDisplay.textContent = "Configuration needed: Please update the WORKER_URL in index.html with your Cloudflare Worker URL.";
+            if (WORKER_URL === "YOUR_CLOUDFLARE_WORKER_URL" || WORKER_URL === "" || !WORKER_URL.startsWith("https://")) {
+                errorDisplay.textContent = "Configuration Error: WORKER_URL is not set correctly in index.html.";
                 errorDisplay.classList.remove('hidden');
                 sendButton.disabled = true;
                 return false;
@@ -129,43 +92,42 @@
             return true;
         }
 
-        // Function to add a message to the chatbox UI.
         function displayMessage(role, content) {
             const messageElement = document.createElement('div');
-            messageElement.classList.add('message', role === 'user' ? 'user-message' : 'assistant-message');
+            messageElement.classList.add('message', 'text-sm', 'sm:text-base', 'rounded-xl'); // More rounded
+            if (role === 'user') {
+                messageElement.classList.add('user-message', 'bg-sky-600', 'text-white', 'self-end', 'rounded-br-md');
+            } else {
+                messageElement.classList.add('assistant-message', 'bg-slate-700', 'text-slate-100', 'self-start', 'rounded-bl-md');
+            }
             
-            // Simple text sanitation and newline handling
             const tempDiv = document.createElement('div');
             tempDiv.textContent = content;
             messageElement.innerHTML = tempDiv.innerHTML.replace(/\n/g, '<br>');
 
             chatbox.appendChild(messageElement);
-            chatbox.scrollTop = chatbox.scrollHeight; // Auto-scroll to the bottom
+            // Smooth scroll to the bottom
+            chatbox.scrollTo({ top: chatbox.scrollHeight, behavior: 'smooth' });
         }
 
-        // Function to send the message to the backend (Cloudflare Worker).
-        async function handleSendMessage() {
-            if (!checkConfig()) return; // Stop if not configured
+        async function handleSendMessage(event) {
+            if (event) event.preventDefault(); // Prevent form submission if called by event
+            if (!checkConfig()) return;
             const userText = userInput.value.trim();
-            if (!userText) return; // Stop if input is empty
+            if (!userText) return;
 
-            // Display user message and update history
             displayMessage('user', userText);
             messageHistory.push({ role: "user", content: userText });
-            userInput.value = ''; // Clear input
+            userInput.value = ''; 
 
-            // Show loading, hide errors, disable button
             loadingIndicator.classList.remove('hidden');
             errorDisplay.classList.add('hidden');
             sendButton.disabled = true;
 
             try {
-                // Send the request to our Cloudflare Worker
                 const response = await fetch(WORKER_URL, {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json' 
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         model: MODEL_NAME,
                         messages: messageHistory,
@@ -173,46 +135,39 @@
                     })
                 });
 
-                // Get the response as JSON (this is where the previous error occurred)
                 const data = await response.json();
 
-                // Check if the response was NOT OK (e.g., 4xx, 5xx errors)
                 if (!response.ok) {
-                    // Throw an error using the 'error' field from our worker's JSON response, or a default message.
-                    throw new Error(data.error || `API Error (${response.status}): ${response.statusText}`);
+                    throw new Error(data.error || `API Error (${response.status}): ${data.details || response.statusText}`);
                 }
 
-                // Extract the reply content (adjust if your LLM/Worker returns a different structure)
-                const replyContent = data?.message?.content || data?.response || "<Could not extract a reply from the response.>";
-
-                // Display assistant message and update history
+                const replyContent = data?.message?.content || data?.response || "<Could not extract reply>";
                 displayMessage('assistant', replyContent);
                 messageHistory.push({ role: "assistant", content: replyContent });
 
             } catch (error) {
                 console.error('Error sending message:', error);
-                // Display the error in the UI
-                errorDisplay.textContent = `Error: ${error.message}. Check browser console & Worker logs for details.`;
+                errorDisplay.textContent = `Error: ${error.message}`;
                 errorDisplay.classList.remove('hidden');
-                // Remove the last user message from history, as it failed
-                messageHistory.pop(); 
+                if (messageHistory[messageHistory.length - 1].role === 'user') {
+                    messageHistory.pop(); 
+                }
             } finally {
-                // Hide loading and re-enable button regardless of success or failure
                 loadingIndicator.classList.add('hidden');
                 sendButton.disabled = false;
-                userInput.focus(); // Set focus back to input
+                userInput.focus();
             }
         }
 
-        // Add event listeners for the send button and Enter key.
-        sendButton.addEventListener('click', handleSendMessage);
+        chatForm.addEventListener('submit', handleSendMessage);
+        // Keep the Enter key functionality if desired, but form submission is primary
         userInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && !event.shiftKey) { // Send on Enter, allow Shift+Enter for newline
+                event.preventDefault();
                 handleSendMessage();
             }
         });
 
-        // Run the configuration check when the page loads.
         checkConfig();
     </script>
 </body>
